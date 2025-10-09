@@ -118,7 +118,21 @@ const FormBuilder = () => {
 
         if (updateError) throw updateError;
 
-        await supabase.from("form_fields").delete().eq("form_id", id);
+        // Get existing fields to preserve IDs
+        const { data: existingFields } = await supabase
+          .from("form_fields")
+          .select("*")
+          .eq("form_id", id);
+
+        const existingFieldIds = existingFields?.map(f => f.id) || [];
+        
+        // Delete fields that are no longer in the form
+        const fieldsToKeep = fields.filter(f => f.id).map(f => f.id);
+        const fieldsToDelete = existingFieldIds.filter(id => !fieldsToKeep.includes(id));
+        
+        if (fieldsToDelete.length > 0) {
+          await supabase.from("form_fields").delete().in("id", fieldsToDelete);
+        }
       } else {
         const { data: newForm, error: createError } = await supabase
           .from("forms")
@@ -134,20 +148,33 @@ const FormBuilder = () => {
         formId = newForm.id;
       }
 
-      const fieldsToInsert = fields.map((field, index) => ({
-        form_id: formId,
-        label: field.label,
-        field_type: field.field_type,
-        is_required: field.is_required,
-        order_index: index,
-        options: field.options || null,
-      }));
+      // Update existing fields and insert new ones
+      for (let index = 0; index < fields.length; index++) {
+        const field = fields[index];
+        const fieldData = {
+          form_id: formId,
+          label: field.label,
+          field_type: field.field_type,
+          is_required: field.is_required,
+          order_index: index,
+          options: field.options || null,
+        };
 
-      const { error: fieldsError } = await supabase
-        .from("form_fields")
-        .insert(fieldsToInsert);
-
-      if (fieldsError) throw fieldsError;
+        if (field.id && isEdit) {
+          // Update existing field
+          const { error } = await supabase
+            .from("form_fields")
+            .update(fieldData)
+            .eq("id", field.id);
+          if (error) throw error;
+        } else {
+          // Insert new field
+          const { error } = await supabase
+            .from("form_fields")
+            .insert(fieldData);
+          if (error) throw error;
+        }
+      }
 
       toast.success(isEdit ? "Form updated!" : "Form created!");
       navigate("/admin");

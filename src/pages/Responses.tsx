@@ -4,8 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Download, FileSpreadsheet, ImageDown } from "lucide-react";
+import { ArrowLeft, Download, FileSpreadsheet, ImageDown, Edit, Trash2 } from "lucide-react";
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 
@@ -32,6 +36,8 @@ const Responses = () => {
   const [fields, setFields] = useState<FormField[]>([]);
   const [responses, setResponses] = useState<Response[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingResponse, setEditingResponse] = useState<Response | null>(null);
+  const [editedAnswers, setEditedAnswers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadData();
@@ -177,6 +183,59 @@ const Responses = () => {
     return url && (url.includes('form-uploads') || url.match(/\.(jpg|jpeg|png|gif|webp)$/i));
   };
 
+  const handleEditClick = (response: Response) => {
+    setEditingResponse(response);
+    setEditedAnswers({ ...response.answers });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingResponse) return;
+
+    try {
+      // Update each answer
+      for (const fieldId of Object.keys(editedAnswers)) {
+        const { error } = await supabase
+          .from("response_answers")
+          .update({ answer: editedAnswers[fieldId] })
+          .eq("response_id", editingResponse.id)
+          .eq("field_id", fieldId);
+
+        if (error) throw error;
+      }
+
+      toast.success("Response updated successfully!");
+      setEditingResponse(null);
+      loadData(); // Reload data
+    } catch (error) {
+      toast.error("Failed to update response");
+    }
+  };
+
+  const handleDeleteResponse = async (responseId: string) => {
+    if (!confirm("Are you sure you want to delete this response?")) return;
+
+    try {
+      // Delete answers first
+      await supabase
+        .from("response_answers")
+        .delete()
+        .eq("response_id", responseId);
+
+      // Delete response
+      const { error } = await supabase
+        .from("form_responses")
+        .delete()
+        .eq("id", responseId);
+
+      if (error) throw error;
+
+      toast.success("Response deleted successfully!");
+      loadData();
+    } catch (error) {
+      toast.error("Failed to delete response");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary to-background">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
@@ -232,6 +291,7 @@ const Responses = () => {
                       {fields.map((field) => (
                         <TableHead key={field.id}>{field.label}</TableHead>
                       ))}
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -260,6 +320,24 @@ const Responses = () => {
                             )}
                           </TableCell>
                         ))}
+                        <TableCell className="text-right">
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditClick(response)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteResponse(response.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -269,6 +347,61 @@ const Responses = () => {
           </CardContent>
         </Card>
       </main>
+
+      <Dialog open={!!editingResponse} onOpenChange={(open) => !open && setEditingResponse(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Response</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {fields.map((field) => (
+              <div key={field.id} className="space-y-2">
+                <Label>{field.label}</Label>
+                {field.field_type === "textarea" ? (
+                  <Textarea
+                    value={editedAnswers[field.id] || ""}
+                    onChange={(e) =>
+                      setEditedAnswers({ ...editedAnswers, [field.id]: e.target.value })
+                    }
+                    rows={4}
+                  />
+                ) : field.field_type === "image" ? (
+                  <div className="space-y-2">
+                    <Input
+                      value={editedAnswers[field.id] || ""}
+                      onChange={(e) =>
+                        setEditedAnswers({ ...editedAnswers, [field.id]: e.target.value })
+                      }
+                      placeholder="Image URL"
+                    />
+                    {editedAnswers[field.id] && isImageUrl(editedAnswers[field.id]) && (
+                      <img
+                        src={editedAnswers[field.id]}
+                        alt={field.label}
+                        className="h-32 w-32 object-cover rounded border"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <Input
+                    type={field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
+                    value={editedAnswers[field.id] || ""}
+                    onChange={(e) =>
+                      setEditedAnswers({ ...editedAnswers, [field.id]: e.target.value })
+                    }
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingResponse(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

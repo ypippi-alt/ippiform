@@ -82,7 +82,8 @@ const FormView = () => {
     });
 
     if (missingFields.length > 0) {
-      toast.error("Please fill in all required fields");
+      const fieldNames = missingFields.map(f => f.label).join(", ");
+      toast.error(`Please fill in all required fields: ${fieldNames}`);
       return;
     }
 
@@ -227,9 +228,8 @@ const FormView = () => {
                         onValueChange={(value) =>
                           setAnswers({ ...answers, [field.id]: value })
                         }
-                        required={field.is_required}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={!answers[field.id] && field.is_required ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select an option" />
                         </SelectTrigger>
                         <SelectContent>

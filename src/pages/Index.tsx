@@ -23,6 +23,9 @@ const Index = () => {
           <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent animate-gradient">
             IPPI FORM
           </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            membuat form sesuai kebutuhan anda
+          </p>
           <div className="flex gap-4 justify-center">
             <Button size="lg" onClick={() => navigate("/auth")}>
               Get Started
